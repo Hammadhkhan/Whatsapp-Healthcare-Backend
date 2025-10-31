@@ -1,26 +1,26 @@
 import os
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
     # WhatsApp Configuration (NO DEFAULTS - must be set via environment)
     whatsapp_token: str = ""
     phone_number_id: str = ""
-    verify_token: str = ""  # No hardcoded default
+    verify_token: str = ""
     whatsapp_business_account_id: str = ""
     
     # Twilio Configuration (NO DEFAULTS)
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_sms_number: str = ""
-    twilio_verify_token: str = ""  # No hardcoded default
+    twilio_verify_token: str = ""
     
     # Database Configuration
     database_url: str = "sqlite:///./healthcare.db"
     
     # Security (NO DEFAULTS - fail if not set in production)
     secret_key: str = ""
-    admin_api_key: str = ""  # New: for admin endpoints
+    admin_api_key: str = ""
     
     # Admin Configuration
     admin_phone_numbers: str = ""
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     translation_api_key: Optional[str] = None
     
     # App Settings
-    debug: bool = False  # Changed from True to False
+    debug: bool = False
     log_level: str = "INFO"
     max_conversation_history: int = 20
     session_timeout_minutes: int = 30
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     data_gov_base_url: str = ""
     
     # Emergency Configuration
-    emergency_number: str = "112"  # Universal emergency number, configurable by region
+    emergency_number: str = "112"
     
     # Test Configuration (for development only)
     test_phone_number: str = ""
@@ -59,10 +59,9 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = False
     
-    def _validate_security(self):
-        """Validate security settings"""
+    def validate_security(self):
+        """Validate security settings - call this explicitly when needed"""
         if not self.debug:
-            # Production validation
             if not self.secret_key or len(self.secret_key) < 32:
                 raise ValueError(
                     "Security Error: SECRET_KEY must be set to a secure random value (≥32 chars) in production!"
@@ -78,10 +77,10 @@ class Settings(BaseSettings):
             
             if not self.verify_token:
                 raise ValueError("Security Error: VERIFY_TOKEN must be set in production!")
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._validate_security()
 
 # Initialize settings
 settings = Settings()
+
+# Validate in production
+if not settings.debug:
+    settings.validate_security()
