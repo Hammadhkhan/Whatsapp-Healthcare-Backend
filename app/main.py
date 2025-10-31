@@ -1,32 +1,18 @@
-"""
-Main FastAPI Application
-Healthcare WhatsApp Chatbot with Alert System
-"""
-from fastapi import FastAPI, Request
+import sys
+import logging
+from pathlib import Path
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request, Response, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
-import logging
-import sys
-from pathlib import Path
-import time
-import io
-
-# Add parent directory to path
-sys.path.append(str(Path(__file__).parent.parent))
+import secrets
+from typing import Optional
+from datetime import datetime, timezone
 
 from app.config import settings
-from app.core.database import init_db
-from app.api.endpoints import webhook, health, admin
-from app.ml.model_loader import model_loader
-from app.services.whatsapp import whatsapp_service
-from app.services.admin_alerts import admin_alert_service
 
-# Fix encoding for Windows
-if sys.platform == "win32":
-    # Set UTF-8 encoding for stdout and stderr
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+# Ensure logs directory exists BEFORE logging setup
+Path('logs').mkdir(parents=True, exist_ok=True)
 
 # Configure logging
 logging.basicConfig(
@@ -40,102 +26,101 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Import services after logging is configured
+from app.services.admin_alert_service import AdminAlertService
+from app.services.whatsapp import UnifiedWhatsAppService, get_whatsapp_service
+from app.services.message_processor import MessageProcessor
+
+# Global service instances
+admin_alert_service: Optional[AdminAlertService] = None
+message_processor: Optional[MessageProcessor] = None
+
+
+# ============================================================================
+# AUTHENTICATION HELPERS
+# ============================================================================
+
+def verify_admin_api_key(api_key: str) -> bool:
+    """Verify admin API key using constant-time comparison."""
+    if not api_key or not settings.admin_api_key:
+        return False
+    return secrets.compare_digest(api_key, settings.admin_api_key)
+
+
+async def admin_auth_required(x_api_key: str = Header(None, alias="X-API-Key")):
+    """FastAPI dependency for admin authentication via header."""
+    if not verify_admin_api_key(x_api_key):
+        logger.warning("❌ Failed admin authentication attempt")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key"
+        )
+    return True
+
+
+# ============================================================================
+# APPLICATION LIFESPAN (STARTUP/SHUTDOWN)
+# ============================================================================
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Manage application lifecycle
+    """Application startup and shutdown events"""
+    global admin_alert_service, message_processor
     
-    This function runs before the app starts and after it shuts down.
-    Used for initialization and cleanup tasks.
-    """
-    # Startup
-    logger.info("=" * 50)
-    logger.info(f"[STARTUP] Starting {settings.app_name} v{settings.app_version}")
-    logger.info("=" * 50)
+    logger.info("🚀 Starting Healthcare WhatsApp Bot...")
     
-    # Initialize database
-    logger.info("[DATABASE] Initializing database...")
-    try:
-        init_db()
-        logger.info("[DATABASE] Database initialized successfully")
-    except Exception as e:
-        logger.error(f"[DATABASE] Failed to initialize database: {e}")
-        raise
-    
-    # Preload ML models
-    if settings.debug:
-        logger.info("[MODELS] Debug mode - Skipping model preloading")
-        logger.info("[MODELS] Models will be loaded on first use")
-    else:
-        logger.info("[MODELS] Preloading ML models...")
-        try:
-            start_time = time.time()
-            model_loader.preload_all_models()
-            load_time = time.time() - start_time
-            logger.info(f"[MODELS] Models loaded successfully in {load_time:.2f} seconds")
-        except Exception as e:
-            logger.error(f"[MODELS] Failed to preload some models: {e}")
-            logger.info("[MODELS] Models will be loaded on demand")
-    
-    # Initialize admin alert service
-    logger.info("[ALERTS] Initializing admin alert service...")
     try:
         # Initialize admin alert service
-        logger.info("[ALERTS] Admin alert service initialized successfully")
+        admin_alert_service = AdminAlertService()
+        await admin_alert_service.initialize()
+        logger.info("✅ [ALERTS] Admin alert service initialized")
+        
+        # Initialize message processor
+        message_processor = MessageProcessor()
+        logger.info("✅ [PROCESSOR] Message processor initialized")
+        
+        # Initialize WhatsApp service (lazy initialization on first use)
+        logger.info("✅ [WHATSAPP] WhatsApp service ready (lazy init)")
+        
+        logger.info("✅ All services initialized successfully")
+        
     except Exception as e:
-        logger.error(f"[ALERTS] Failed to initialize admin alert service: {e}")
-    
-    # Log configuration
-    logger.info("[CONFIG] Configuration:")
-    logger.info(f"[CONFIG]   - WhatsApp configured: {bool(settings.whatsapp_token)}")
-    logger.info(f"[CONFIG]   - Database: {settings.database_url}")
-    logger.info(f"[CONFIG]   - Device: {model_loader.device}")
-    logger.info(f"[CONFIG]   - Debug mode: {settings.debug}")
-    logger.info(f"[CONFIG]   - Port: {settings.port}")
-    logger.info(f"[CONFIG]   - Alert system: enabled")
-    logger.info(f"[CONFIG]   - Data.gov.in API: {bool(settings.data_gov_api_key)}")
-    
-    logger.info("[STARTUP] Application started successfully!")
-    logger.info("=" * 50)
+        logger.error(f"❌ Startup failed: {e}", exc_info=True)
+        raise
     
     yield
     
     # Shutdown
-    logger.info("=" * 50)
-    logger.info("[SHUTDOWN] Shutting down application...")
-    
-    # Close WhatsApp client
+    logger.info("🛑 Shutting down Healthcare WhatsApp Bot...")
     try:
-        await whatsapp_service.close()
-        logger.info("[SHUTDOWN] WhatsApp service closed")
+        if admin_alert_service:
+            await admin_alert_service.shutdown()
+            logger.info("✅ [SHUTDOWN] Admin alert service closed")
+        
+        # Close WhatsApp service if initialized
+        whatsapp_service = get_whatsapp_service()
+        if whatsapp_service and whatsapp_service.client:
+            await whatsapp_service.close()
+            logger.info("✅ [SHUTDOWN] WhatsApp service closed")
+            
+        logger.info("✅ All services shutdown complete")
+        
     except Exception as e:
-        logger.error(f"[SHUTDOWN] Error closing WhatsApp service: {e}")
-    
-    # Clear model cache
-    try:
-        model_loader.clear_cache()
-        logger.info("[SHUTDOWN] Model cache cleared")
-    except Exception as e:
-        logger.error(f"[SHUTDOWN] Error clearing model cache: {e}")
-    
-    # Shutdown admin alert service
-    try:
-        logger.info("[SHUTDOWN] Admin alert service shutdown")
-    except Exception as e:
-        logger.error(f"[SHUTDOWN] Error shutting down admin alert service: {e}")
-    
-    logger.info("[SHUTDOWN] Application shutdown complete")
-    logger.info("=" * 50)
+        logger.error(f"Error during shutdown: {e}", exc_info=True)
 
-# Create FastAPI app
+
+# ============================================================================
+# CREATE FASTAPI APP
+# ============================================================================
+
 app = FastAPI(
-    title=settings.app_name,
-    version=settings.app_version,
-    description="A Healthcare WhatsApp Chatbot powered by AI with Alert System",
+    title="Healthcare WhatsApp Bot",
+    description="AI-powered healthcare chatbot for WhatsApp",
+    version="1.0.0",
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -144,340 +129,257 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(webhook.router)
-app.include_router(health.router)
-app.include_router(admin.router)  # ✅ Added admin router for alerts
 
-# Root endpoint
+# ============================================================================
+# ROOT ENDPOINT
+# ============================================================================
+
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """Root endpoint - health check"""
     return {
-        "name": settings.app_name,
-        "version": settings.app_version,
-        "status": "running",
+        "status": "healthy",
+        "message": "Healthcare WhatsApp Bot API",
+        "version": "1.0.0",
         "endpoints": {
             "webhook": "/webhook",
-            "health": "/health",
-            "detailed_health": "/health/detailed",
-            "stats": "/stats",
-            "admin_alerts": "/admin",  # ✅ Added admin alerts endpoint
-            "docs": "/docs",
-            "redoc": "/redoc"
-        },
-        "features": {
-            "ai_healthcare": "enabled",
-            "whatsapp_integration": "enabled",
-            "admin_alerts": "enabled",  # ✅ Alert system enabled
-            "data_gov_integration": "enabled",
-            "database_analytics": "enabled"
+            "health": "/api/health",
+            "admin": "/admin/*"
         }
     }
 
-# Global exception handler
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Handle uncaught exceptions"""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+
+# ============================================================================
+# WEBHOOK ENDPOINTS (WhatsApp)
+# ============================================================================
+
+@app.get("/webhook")
+async def verify_webhook(request: Request):
+    """Verify WhatsApp webhook - called by Meta during setup"""
+    hub_mode = request.query_params.get("hub.mode")
+    hub_verify_token = request.query_params.get("hub.verify_token")
+    hub_challenge = request.query_params.get("hub.challenge")
     
-    if settings.debug:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "Internal server error",
-                "detail": str(exc),
-                "type": type(exc).__name__
-            }
-        )
+    # Log without exposing tokens
+    logger.info(f"📋 Webhook verification request - Mode: {hub_mode}")
+    
+    if hub_mode == "subscribe" and hub_verify_token == settings.verify_token:
+        logger.info("✅ Webhook verified successfully")
+        return Response(content=hub_challenge, media_type="text/plain")
     else:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error"}
-        )
+        logger.error("❌ Webhook verification failed: token mismatch")
+        raise HTTPException(status_code=403, detail="Verification failed")
 
-# Request logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all incoming requests"""
-    start_time = time.time()
-    
-    # Log request
-    logger.info(f"[REQUEST] {request.method} {request.url.path}")
-    
-    # Process request
-    response = await call_next(request)
-    
-    # Calculate processing time
-    process_time = time.time() - start_time
-    
-    # Log response
-    logger.info(f"[RESPONSE] {request.url.path} - Status: {response.status_code} - Time: {process_time:.3f}s")
-    
-    # Add processing time header
-    response.headers["X-Process-Time"] = str(process_time)
-    
-    return response
 
-# Alert system endpoints
-@app.post("/alerts/broadcast")
-async def send_broadcast_alert(message: str, alert_type: str = "info", 
-                             priority: str = "normal", api_key: str = None):
-    """
-    Send broadcast alert to all users
-    
-    This endpoint allows administrators to send broadcast alerts to all users.
-    Requires valid API key for authentication.
-    
-    Args:
-        message: Alert message to send
-        alert_type: Type of alert (info, warning, emergency, outbreak)
-        priority: Priority level (low, normal, high)
-        api_key: Administrator API key for authentication
-        
-    Returns:
-        Dict with broadcast results
-    """
+@app.post("/webhook")
+async def receive_message(request: Request):
+    """Receive and process WhatsApp messages"""
     try:
-        # Authenticate admin (simple for demo - improve for production)
-        if not api_key or api_key != "admin_secret_key_change_this":
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Unauthorized", "message": "Invalid or missing API key"}
-            )
+        data = await request.json()
         
-        # Send broadcast alert using admin service
-        result = await admin_alert_service.send_broadcast_alert(
-            alert_message=message,
-            alert_type=alert_type,
-            priority=priority
-        )
+        # Log metadata only, not full payload (PII risk)
+        entry_count = len(data.get('entry', []))
+        logger.info(f"📥 Received webhook with {entry_count} entries")
         
-        if result.get('success'):
-            logger.info(f"✅ Broadcast alert sent - Type: {alert_type}, Priority: {priority}")
-            return JSONResponse(
-                status_code=200,
-                content=result
-            )
+        # Process message using message processor
+        if message_processor:
+            result = await message_processor.process_webhook(data)
+            return {"status": "success", "result": result}
         else:
-            logger.error(f"❌ Failed to send broadcast alert: {result.get('error')}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Failed to send broadcast alert", "details": result.get('error')}
+            logger.error("Message processor not initialized")
+            return {"status": "error", "message": "Service not ready"}
+        
+    except Exception as e:
+        logger.error(f"Error processing webhook: {e}", exc_info=True)
+        # Return 200 to prevent Meta from retrying
+        return {"status": "error", "message": str(e)}
+
+
+# ============================================================================
+# ADMIN ENDPOINTS (Protected with API Key)
+# ============================================================================
+
+@app.post("/admin/broadcast")
+async def send_broadcast_alert(
+    request: Request,
+    authenticated: bool = Depends(admin_auth_required)
+):
+    """Send broadcast alert to all users (Admin only)"""
+    try:
+        data = await request.json()
+        message = data.get("message")
+        alert_type = data.get("alert_type", "info")
+        priority = data.get("priority", "normal")
+        
+        logger.info(f"📢 Broadcasting {alert_type} alert (Priority: {priority})")
+        
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        # Use admin alert service to broadcast
+        if admin_alert_service:
+            result = await admin_alert_service.send_broadcast(
+                message=message,
+                alert_type=alert_type,
+                priority=priority
             )
+            return {
+                "status": "success",
+                "message": "Broadcast alert sent successfully",
+                "result": result
+            }
+        else:
+            raise HTTPException(status_code=503, detail="Alert service not available")
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error sending broadcast alert: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error", "details": str(e)}
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/alerts/outbreak")
-async def send_outbreak_alert(disease: str, region: str, 
-                            symptoms: list, precautions: list,
-                            severity: str = "moderate", api_key: str = None):
-    """
-    Send disease outbreak alert
-    
-    Send outbreak alerts to users in affected regions.
-    
-    Args:
-        disease: Disease name
-        region: Affected region
-        symptoms: List of symptoms to watch for
-        precautions: List of preventive measures
-        severity: Severity level (low, moderate, high, critical)
-        api_key: Administrator API key
-        
-    Returns:
-        Dict with outbreak alert results
-    """
-    try:
-        # Authenticate admin
-        if not api_key or api_key != "admin_secret_key_change_this":
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Unauthorized", "message": "Invalid or missing API key"}
-            )
-        
-        # Send outbreak alert
-        result = await admin_alert_service.send_outbreak_alert(
-            disease=disease,
-            region=region,
-            symptoms=symptoms,
-            precautions=precautions,
-            severity=severity
-        )
-        
-        if result.get('success'):
-            logger.info(f"✅ Outbreak alert sent - Disease: {disease}, Region: {region}")
-            return JSONResponse(
-                status_code=200,
-                content=result
-            )
-        else:
-            logger.error(f"❌ Failed to send outbreak alert: {result.get('error')}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Failed to send outbreak alert", "details": result.get('error')}
-            )
-            
-    except Exception as e:
-        logger.error(f"Error sending outbreak alert: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error", "details": str(e)}
-        )
 
-@app.post("/alerts/emergency")
-async def send_emergency_alert(emergency_type: str, region: str,
-                             affected_areas: list, safety_instructions: list,
-                             contact_info: dict, api_key: str = None):
-    """
-    Send emergency alert
-    
-    Send emergency alerts for natural disasters, accidents, etc.
-    
-    Args:
-        emergency_type: Type of emergency
-        region: Affected region
-        affected_areas: List of affected areas
-        safety_instructions: List of safety instructions
-        contact_info: Emergency contact information
-        api_key: Administrator API key
-        
-    Returns:
-        Dict with emergency alert results
-    """
+@app.post("/admin/emergency")
+async def send_emergency_alert(
+    request: Request,
+    authenticated: bool = Depends(admin_auth_required)
+):
+    """Send emergency alert (Admin only)"""
     try:
-        # Authenticate admin
-        if not api_key or api_key != "admin_secret_key_change_this":
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Unauthorized", "message": "Invalid or missing API key"}
-            )
+        data = await request.json()
+        message = data.get("message")
+        affected_area = data.get("affected_area")
+        instructions = data.get("instructions")
         
-        # Send emergency alert
-        result = await admin_alert_service.send_emergency_alert(
-            emergency_type=emergency_type,
-            region=region,
-            affected_areas=affected_areas,
-            safety_instructions=safety_instructions,
-            contact_info=contact_info
-        )
+        logger.info("🚨 Sending emergency alert")
         
-        if result.get('success'):
-            logger.info(f"✅ Emergency alert sent - Type: {emergency_type}, Region: {region}")
-            return JSONResponse(
-                status_code=200,
-                content=result
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        if admin_alert_service:
+            result = await admin_alert_service.send_emergency_alert(
+                message=message,
+                affected_area=affected_area,
+                instructions=instructions
             )
+            return {
+                "status": "success",
+                "message": "Emergency alert sent successfully",
+                "result": result
+            }
         else:
-            logger.error(f"❌ Failed to send emergency alert: {result.get('error')}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Failed to send emergency alert", "details": result.get('error')}
-            )
+            raise HTTPException(status_code=503, detail="Alert service not available")
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error sending emergency alert: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error", "details": str(e)}
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/alerts/test")
-async def test_alert_system():
-    """
-    Test alert system
-    
-    Simple endpoint to test if alert system is working.
-    
-    Returns:
-        Dict with test results
-    """
+
+@app.post("/admin/health-tip")
+async def send_health_tip(
+    request: Request,
+    authenticated: bool = Depends(admin_auth_required)
+):
+    """Send health tip (Admin only)"""
     try:
-        logger.info("🧪 Alert system test requested")
+        data = await request.json()
+        message = data.get("message")
+        category = data.get("category")
         
-        # Test basic functionality
-        test_result = {
-            "status": "success",
-            "message": "Alert system is operational",
-            "features": {
-                "broadcast_alerts": "enabled",
-                "outbreak_alerts": "enabled",
-                "emergency_alerts": "enabled",
-                "admin_authentication": "enabled"
-            },
-            "timestamp": time.time()
-        }
+        logger.info("💡 Sending health tip")
         
-        logger.info("✅ Alert system test completed successfully")
-        return JSONResponse(
-            status_code=200,
-            content=test_result
-        )
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is required")
         
+        if admin_alert_service:
+            result = await admin_alert_service.send_health_tip(message, category)
+            return {
+                "status": "success",
+                "message": "Health tip sent successfully",
+                "result": result
+            }
+        else:
+            raise HTTPException(status_code=503, detail="Alert service not available")
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error testing alert system: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error", "details": str(e)}
-        )
+        logger.error(f"Error sending health tip: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Health check with alert system status
-@app.get("/health/extended")
-async def extended_health_check():
-    """
-    Extended health check with alert system status
-    
-    Returns detailed health information including alert system status.
-    """
-    try:
-        # Get basic health check
-        basic_health = await health.health_check()
-        
-        # Add alert system status
-        alert_status = {
-            "alert_system": "operational",
-            "admin_service": "initialized",
-            "data_gov_integration": bool(settings.data_gov_api_key),
-            "whatsapp_integration": bool(settings.whatsapp_token)
+
+@app.get("/admin/health")
+async def admin_health_check():
+    """Admin service health check (No auth required)"""
+    return {
+        "status": "healthy",
+        "service": "admin_alerts",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": {
+            "admin_alert": admin_alert_service is not None,
+            "message_processor": message_processor is not None
         }
-        
-        # Combine health information
-        extended_health = {
-            **basic_health,
-            "alert_system": alert_status,
-            "features": {
-                "ai_healthcare": "enabled",
-                "whatsapp_messaging": "enabled",
-                "admin_alerts": "enabled",
-                "data_gov_integration": "enabled" if settings.data_gov_api_key else "disabled",
-                "database_analytics": "enabled"
+    }
+
+
+@app.get("/admin/stats")
+async def api_stats(authenticated: bool = Depends(admin_auth_required)):
+    """Get API statistics (Admin only)"""
+    try:
+        # TODO: Implement actual stats from database
+        return {
+            "status": "success",
+            "stats": {
+                "total_messages": 0,
+                "active_users": 0,
+                "total_alerts_sent": 0,
+                "uptime": "N/A"
             }
         }
-        
-        return JSONResponse(
-            status_code=200,
-            content=extended_health
-        )
-        
     except Exception as e:
-        logger.error(f"Error in extended health check: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error", "details": str(e)}
-        )
+        logger.error(f"Error getting stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    import uvicorn
-    
-    uvicorn.run(
-        "app.main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug,
-        log_level=settings.log_level.lower()
+
+# ============================================================================
+# HEALTH/STATUS ENDPOINTS
+# ============================================================================
+
+@app.get("/api/health")
+async def api_health():
+    """API health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "healthcare_bot_api",
+        "version": "1.0.0",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+# ============================================================================
+# ERROR HANDLERS
+# ============================================================================
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc):
+    """Handle 404 errors"""
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Endpoint not found", "path": str(request.url)}
     )
+
+
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc):
+    """Handle 500 errors"""
+    logger.error(f"Internal server error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"}
+    )
+
+
+# Export for use in other modules
+__all__ = ['app', 'admin_auth_required', 'verify_admin_api_key']
+'''
