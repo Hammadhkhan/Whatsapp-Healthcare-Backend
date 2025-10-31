@@ -197,7 +197,7 @@ LOG_LEVEL=INFO
 EMERGENCY_NUMBER=112  # Change based on region (911 for US)
 
 # Test Configuration (Development only)
-TEST_PHONE_NUMBER=919876543210
+TEST_PHONE_NUMBER=
 ```
 
 ### 3. WhatsApp Business API Setup
@@ -526,3 +526,4 @@ Made with ❤️ for better healthcare accessibility
 **[Back to Top](#-healthcare-whatsapp-chatbot)**
 
 </div>
+
