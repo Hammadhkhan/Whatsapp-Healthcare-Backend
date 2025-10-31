@@ -1,220 +1,145 @@
-"""
-Unified WhatsApp Service - FIXED WITH ASYNC HTTPX
-"""
-import logging
-from typing import Dict, Any, List, Optional
-import json
 import httpx
+import logging
+from typing import Dict, Any, Optional
+import json
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class UnifiedWhatsAppService:
-    """Unified WhatsApp service with proper async client"""
-
+    """Unified WhatsApp service with async HTTP client"""
+    
     def __init__(self):
-        self.access_token = settings.whatsapp_token
-        self.phone_number_id = settings.whatsapp_phone_number_id
-        self.business_account_id = settings.whatsapp_business_account_id
-        self.verify_token = settings.verify_token
-
-        # ✅ FIXED: Correct API version
-        self.base_url = f"https://graph.facebook.com/v20.0/{self.phone_number_id}"
+        self.base_url = f"https://graph.facebook.com/v17.0/{settings.phone_number_id}"
         self.headers = {
-            "Authorization": f"Bearer {self.access_token}",
+            "Authorization": f"Bearer {settings.whatsapp_token}",
             "Content-Type": "application/json"
         }
-
-        logger.info("Unified WhatsApp Service initialized")
-        logger.info(f"Base URL: {self.base_url}")
-        logger.info(f"Phone Number ID: {self.phone_number_id}")
-        logger.info(f"Access Token Prefix: {self.access_token[:15]}...")
-
-        # Reuse async client
-        self.client = httpx.AsyncClient(timeout=30)
-
+        self.client: Optional[httpx.AsyncClient] = None
+    
+    async def __aenter__(self):
+        """Async context manager entry"""
+        self.client = httpx.AsyncClient(timeout=30.0)
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        if self.client:
+            await self.client.aclose()
+    
+    async def ensure_client(self):
+        """Ensure async client is initialized"""
+        if self.client is None:
+            self.client = httpx.AsyncClient(timeout=30.0)
+    
     async def send_text_message(self, to: str, text: str) -> Dict[str, Any]:
-        """Send text message"""
+        """Send text message to WhatsApp user"""
+        await self.ensure_client()
+        
+        # Format phone number to E.164 (with + prefix)
+        to_clean = to.replace("+", "").replace(" ", "").replace("-", "")
+        if not to_clean.startswith("+"):
+            to_clean = f"+{to_clean}"
+        
+        # Log with masked number
+        masked = f"***{to_clean[-4:]}" if len(to_clean) > 4 else "****"
+        logger.info(f"📤 Sending message to {masked}")
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_clean,
+            "type": "text",
+            "text": {"body": text}
+        }
+        
         try:
-            to_clean = to.replace("whatsapp:", "").replace("+", "")
-            logger.info(f"📤 Sending WhatsApp text to {to_clean}")
-            logger.info(f"Message: {text[:100]}...")
-
-            url = f"{self.base_url}/messages"
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": to_clean,
-                "text": {"body": text}
-            }
-
-            response = await self.client.post(url, headers=self.headers, json=payload)
-
-            if response.status_code == 200:
-                data = response.json()
-                logger.info("✅ WhatsApp text sent successfully")
-                return {"success": True, "data": data}
+            response = await self.client.post(
+                f"{self.base_url}/messages",
+                headers=self.headers,
+                json=payload
+            )
+            
+            # Accept all 2xx status codes
+            if 200 <= response.status_code < 300:
+                logger.info("✅ Message sent successfully")
+                return response.json()
             else:
-                logger.error(f"❌ Failed text. Status: {response.status_code}, Response: {response.text}")
-                return {"success": False, "status": response.status_code, "error": response.text}
-
+                error_data = response.json()
+                logger.error(f"❌ Failed to send message: {error_data}")
+                return {"success": False, "error": error_data}
+                
         except Exception as e:
-            logger.error(f"Error sending WhatsApp text: {e}", exc_info=True)
+            logger.error(f"Exception sending message: {e}")
             return {"success": False, "error": str(e)}
-
-    async def send_interactive_message(self, to: str, text: str, buttons: List[Dict[str, str]]) -> Dict[str, Any]:
-        """Send interactive message with buttons"""
-        try:
-            to_clean = to.replace("whatsapp:", "").replace("+", "")
-            logger.info(f"📤 Sending WhatsApp interactive to {to_clean}")
-
-            url = f"{self.base_url}/messages"
-
-            limited_buttons = buttons[:3]
-            formatted_buttons = [
-                {
-                    "type": "reply",
-                    "reply": {
-                        "id": b.get("id", f"button_{i}"),
-                        "title": b.get("title", f"Button {i+1}")[:20]
-                    }
-                }
-                for i, b in enumerate(limited_buttons)
-            ]
-
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": to_clean,
-                "type": "interactive",
-                "interactive": {
-                    "type": "button",
-                    "body": {"text": text},
-                    "action": {"buttons": formatted_buttons}
-                }
-            }
-
-            response = await self.client.post(url, headers=self.headers, json=payload)
-
-            if response.status_code == 200:
-                data = response.json()
-                logger.info("✅ WhatsApp interactive sent successfully")
-                return {"success": True, "data": data}
-            else:
-                logger.error(f"❌ Failed interactive. Status: {response.status_code}, Response: {response.text}")
-                return {"success": False, "status": response.status_code, "error": response.text}
-
-        except Exception as e:
-            logger.error(f"Error sending interactive: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
-
-    async def mark_as_read(self, message_id: str) -> Dict[str, Any]:
-        """Mark message as read"""
-        try:
-            url = f"{self.base_url}/messages"
-            payload = {
-                "messaging_product": "whatsapp",
-                "status": "read",
-                "message_id": message_id
-            }
-
-            response = await self.client.post(url, headers=self.headers, json=payload)
-
-            if response.status_code == 200:
-                logger.info(f"✅ Message {message_id} marked as read")
-                return {"success": True, "data": response.json()}
-            else:
-                logger.error(f"❌ Failed mark read. Status: {response.status_code}, Response: {response.text}")
-                return {"success": False, "status": response.status_code, "error": response.text}
-
-        except Exception as e:
-            logger.error(f"Error marking read: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
-
+    
     def parse_webhook_message(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Parse webhook message"""
+        """Parse webhook message with proper validation"""
         try:
             logger.info("📥 Parsing webhook")
-            logger.info(f"Webhook data: {json.dumps(data, indent=2)}")
-
-            entry = data.get('entry', [{}])[0]
-            changes = entry.get('changes', [{}])[0]
-            value = changes.get('value', {})
-            messages = value.get('messages', [{}])[0]
-            contacts = value.get('contacts', [{}])[0]
-
+            
+            entries = data.get('entry', [])
+            if not entries:
+                logger.info("No entries found in webhook")
+                return None
+            
+            entry = entries[0]
+            changes = entry.get('changes', [])
+            if not changes:
+                logger.info("No changes found")
+                return None
+            
+            value = changes[0].get('value', {})
+            messages = value.get('messages', [])
+            contacts = value.get('contacts', [])
+            
             if not messages:
                 logger.info("No messages found")
                 return None
-
+            
+            message = messages[0]
+            contact = contacts[0] if contacts else {}
+            
+            # Extract safe metadata only
             return {
-                "message_id": messages.get('id'),
-                "from": messages.get('from', '').replace('whatsapp:', ''),
-                "timestamp": messages.get('timestamp'),
-                "type": messages.get('type'),
-                "contact_name": contacts.get('profile', {}).get('name'),
-                "text": messages.get('text', {}).get('body') if messages.get('type') == 'text' else None,
-                "interactive": messages.get('interactive'),
-                "image": messages.get('image'),
-                "audio": messages.get('audio'),
-                "document": messages.get('document'),
-                "location": messages.get('location'),
-                "sticker": messages.get('sticker')
+                'message_id': message.get('id'),
+                'from': message.get('from'),
+                'timestamp': message.get('timestamp'),
+                'type': message.get('type'),
+                'text': message.get('text', {}).get('body', ''),
+                'contact_name': contact.get('profile', {}).get('name', 'Unknown')
             }
-
+            
         except Exception as e:
             logger.error(f"Error parsing webhook: {e}", exc_info=True)
             return None
-
-    def verify_webhook(self, data: Dict[str, Any]) -> bool:
-        """Verify webhook"""
-        try:
-            hub_mode = data.get('hub.mode')
-            hub_verify_token = data.get('hub.verify_token')
-            hub_challenge = data.get('hub.challenge')
-
-            logger.info(f"🔍 Webhook verification request: mode={hub_mode}, token={hub_verify_token}")
-
-            if hub_mode == "subscribe" and hub_verify_token == self.verify_token:
-                logger.info("✅ Webhook verified")
-                return True
-            else:
-                logger.error("❌ Webhook verification failed")
-                return False
-
-        except Exception as e:
-            logger.error(f"Error verifying webhook: {e}", exc_info=True)
-            return False
-
+    
     async def close(self):
-        """Close async client"""
-        try:
+        """Close async HTTP client"""
+        if self.client:
             await self.client.aclose()
-            logger.info("🔌 WhatsApp service closed")
-            return {"success": True, "message": "WhatsApp service closed"}
-        except Exception as e:
-            logger.error(f"Error closing WhatsApp service: {e}")
-            return {"success": False, "error": str(e)}
+            self.client = None
 
 
-# ✅ Create service instance
-whatsapp_service = UnifiedWhatsAppService()
+# Lazy initialization
+_whatsapp_service: Optional[UnifiedWhatsAppService] = None
 
 
-# Test runner
-async def test_whatsapp_service():
-    """Quick test for hackathon"""
-    print("🧪 Testing WhatsApp Service")
-    service = UnifiedWhatsAppService()
+def get_whatsapp_service() -> UnifiedWhatsAppService:
+    """Get or create the WhatsApp service instance (lazy initialization)"""
+    global _whatsapp_service
+    if _whatsapp_service is None:
+        _whatsapp_service = UnifiedWhatsAppService()
+    return _whatsapp_service
+'''
 
-    test_number = "917019567529"  # ✅ No +
-    test_message = "🧪 Healthcare Chatbot test - it's working!"
+# Save file list
+file_list = list(files.keys())
+print("✅ Generated all updated code files:")
+for i, filename in enumerate(file_list, 1):
+    lines = len(files[filename].splitlines())
+    print(f"{i}. {filename} ({lines} lines)")
 
-    result = await service.send_text_message(test_number, test_message)
-    print(f"Result: {result}")
-
-    await service.close()
-
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(test_whatsapp_service())
+print(f"\n📊 Total files: {len(files)}")
+print("=" * 60)
