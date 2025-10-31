@@ -1,188 +1,132 @@
-"""
-Message Processor Service - Updated for Multilingual Support
-"""
 import logging
 from typing import Dict, Any, Optional
-import json
-import uuid
-from datetime import datetime
-import re
-
-from app.services.whatsapp import whatsapp_service
-from app.ml.healthcare_models import healthcare_service  # ✅ Use multilingual service
-from app.core.database import DatabaseManager, get_db_context
+from app.services.whatsapp import get_whatsapp_service
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class MessageProcessor:
-    """Process incoming WhatsApp messages and generate responses"""
+    """Process incoming WhatsApp messages"""
     
     def __init__(self):
-        self.whatsapp = whatsapp_service
-        self.healthcare = healthcare_service  # ✅ Multilingual healthcare service
-        self.db_manager = DatabaseManager()
-        logger.info("Message Processor initialized with multilingual support")
+        self.whatsapp_service = get_whatsapp_service()
+        logger.info("Message processor initialized")
     
     async def process_webhook(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process incoming webhook data"""
+        """Process webhook data from WhatsApp"""
         try:
-            # Parse the webhook message
-            message_data = self.whatsapp.parse_webhook_message(data)
+            # Parse message
+            message_data = self.whatsapp_service.parse_webhook_message(data)
             
             if not message_data:
-                logger.info("No message data found in webhook")
+                logger.info("No processable message found")
                 return {"status": "no_message"}
             
-            logger.info(f"Processing message: {json.dumps(message_data, indent=2)}")
+            from_number = message_data.get('from')
+            message_text = message_data.get('text', '')
             
-            # Handle different message types
-            if message_data['type'] == 'text':
-                return await self.process_text_message(message_data)
+            logger.info(f"📨 Processing message: {message_text[:50]}...")
             
-            elif message_data['type'] == 'interactive':
-                return await self.process_interactive_message(message_data)
+            # Process message and generate response
+            response_text = await self.generate_response(message_text, from_number)
             
-            elif message_data['type'] == 'image':
-                return await self.process_media_message(message_data, 'image')
+            # Send response
+            if response_text:
+                result = await self.whatsapp_service.send_text_message(from_number, response_text)
+                return {"status": "processed", "sent": result}
             
-            elif message_data['type'] == 'audio':
-                return await self.process_media_message(message_data, 'audio')
-            
-            else:
-                # Send a default response for unsupported message types
-                await self.whatsapp.send_text_message(
-                    message_data['from'],
-                    "I can currently only process text messages. Please send your health query as text."
-                )
-                return {"status": "unsupported_type", "type": message_data['type']}
+            return {"status": "processed", "sent": False}
             
         except Exception as e:
             logger.error(f"Error processing webhook: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
     
-    async def process_text_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process text message with multilingual support"""
-        sender = message_data['from']
-        text = message_data.get('text', '')
-        message_id = message_data['message_id']
-        contact_name = message_data.get('contact_name', 'User')
-        
+    async def generate_response(self, message: str, from_number: str) -> str:
+        """Generate response to user message"""
         try:
-            # Mark message as read
-            await self.whatsapp.mark_as_read(message_id)
+            message_lower = message.lower().strip()
             
-            # Save to database and extract needed data
-            user_language = 'en'  # Default language
-            conversation_id = None  # Store conversation ID
-            
-            with get_db_context() as db:
-                # Get or create user
-                user = self.db_manager.create_user(db, sender, contact_name)
-                
-                # Extract user language preference WITHIN the session
-                user_language = getattr(user, 'language_preference', 'en')
-                
-                # Get or create conversation
-                conversation = self.db_manager.get_or_create_active_conversation(db, user.id)
-                
-                # Store conversation ID for later use
-                conversation_id = conversation.id
-                
-                # Save incoming message
-                user_message = self.db_manager.save_message(
-                    db,
-                    conversation_id,
-                    message_id,
-                    'user',
-                    text,
-                    message_type='text'
-                )
-            
-            # ✅ Process with multilingual healthcare service
-            logger.info(f"Processing health query: {text}")
-            
-            # Detect language automatically
-            detected_language = self.healthcare.detect_language(text)
-            logger.info(f"Detected language: {detected_language}")
-            
-            # Process with AI models using the detected language
-            response = self.healthcare.process_healthcare_query(text, detected_language)
-            
-            # Log successful AI processing
-            logger.info(f"AI processing successful - Intent: {response.intent}, Confidence: {response.confidence}")
-            
-            # Handle emergency cases with special formatting
-            if response.intent == "emergency":
-                # Send emergency response with buttons
-                buttons = [
-                    {"id": "call_emergency", "title": "Call 108"},
-                    {"id": "find_hospital", "title": "Find Hospital"},
-                    {"id": "first_aid", "title": "First Aid Tips"}
-                ]
-                
-                result = await self.whatsapp.send_interactive_message(
-                    sender,
-                    response.answer,
-                    buttons
-                )
-            else:
-                # Send regular text response
-                result = await self.whatsapp.send_text_message(sender, response.answer)
-            
-            # Save bot response to database in a NEW session
-            if result.get('success'):
-                with get_db_context() as db:
-                    bot_message_id = result.get('data', {}).get('messages', [{}])[0].get('id', str(uuid.uuid4()))
-                    
-                    # Save bot message using the stored conversation_id
-                    bot_message = self.db_manager.save_message(
-                        db,
-                        conversation_id,  # Use the stored conversation_id
-                        bot_message_id,
-                        'bot',
-                        response.answer,
-                        message_type='text',
-                        detected_language=response.language,
-                        detected_intent=response.intent,
-                        confidence_score=response.confidence,
-                        model_used=response.model_used,
-                        processing_time_ms=response.processing_time * 1000
-                    )
-                    
-                    # Update user message with ML data
-                    self.db_manager.update_message_ml_data(
-                        db,
-                        message_id,
-                        detected_language=response.language,
-                        detected_intent=response.intent
-                    )
-            
-            # Send follow-up options for certain intents
-            if response.intent in ["symptom", "medication"] and result.get('success'):
-                await self._send_follow_up_options(sender, response.intent)
-            
-            return {
-                "status": "success",
-                "intent": response.intent,
-                "confidence": response.confidence,
-                "response_sent": result.get('success', False),
-                "language": response.language,
-                "model_used": response.model_used
-            }
-            
-        except Exception as e:
-            logger.error(f"Error processing text message: {e}", exc_info=True)
-            
-            # Send error message to user
-            await self.whatsapp.send_text_message(
-                sender,
-                "I apologize, but I'm having trouble processing your message. Please try again or contact support if the issue persists."
-            )
-            
-            return {"status": "error", "error": str(e)}
-    
-    # ... rest of your existing methods ...
+            # Greeting
+            if any(greet in message_lower for greet in ['hi', 'hello', 'hey', 'namaste']):
+                return """👋 Hello! Welcome to Healthcare Assistant.
 
-# Create service instance
-message_processor = MessageProcessor()
+I can help you with:
+• Symptom checking
+• Health information
+• Emergency guidance
+• Find hospitals
+• Medicine information
+
+How can I assist you today?"""
+            
+            # Emergency detection
+            elif any(word in message_lower for word in ['emergency', 'urgent', 'critical', 'help']):
+                return f"""🚨 EMERGENCY ASSISTANCE
+
+If this is a medical emergency:
+📞 Call {settings.emergency_number} immediately
+
+For urgent care:
+• Stay calm
+• Note symptoms
+• Contact nearest hospital
+
+Reply with your symptoms for immediate guidance."""
+            
+            # Symptom checking
+            elif any(word in message_lower for word in ['symptom', 'pain', 'fever', 'cough', 'headache']):
+                return """🏥 SYMPTOM CHECKER
+
+Please describe your symptoms in detail:
+• When did they start?
+• How severe are they? (1-10)
+• Any other symptoms?
+
+I'll provide guidance based on your symptoms.
+
+⚠️ This is not a diagnosis. Seek medical care if symptoms worsen."""
+            
+            # Medicine info
+            elif any(word in message_lower for word in ['medicine', 'medication', 'drug', 'tablet']):
+                return """💊 MEDICINE INFORMATION
+
+Please provide:
+• Medicine name
+• Your question about it
+
+I'll provide information on:
+• Usage instructions
+• Common side effects
+• Precautions
+
+⚠️ Always consult your doctor before taking any medication."""
+            
+            # Hospital finder
+            elif any(word in message_lower for word in ['hospital', 'clinic', 'doctor', 'nearby']):
+                return """🏥 FIND HEALTHCARE FACILITIES
+
+To find nearby hospitals/clinics:
+• Share your location
+• Or tell me your area/city
+
+I'll help you find:
+• Nearest hospitals
+• Specialist clinics
+• Emergency centers"""
+            
+            # Default response
+            else:
+                return """I'm here to help! You can ask me about:
+
+🏥 Health symptoms
+💊 Medicine information
+🚨 Emergency guidance
+🏥 Find hospitals
+💡 Health tips
+
+What would you like to know?"""
+                
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            return "Sorry, I encountered an error. Please try again."
