@@ -1,103 +1,146 @@
+<div align="center">
+
 # 🏥 Healthcare WhatsApp Chatbot
 
-A sophisticated AI-powered WhatsApp chatbot providing instant healthcare information, symptom analysis, and medical guidance in multiple languages.
+### AI-Powered Healthcare Assistant via WhatsApp Business API
 
-![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![WhatsApp](https://img.shields.io/badge/WhatsApp-Business_API-green)
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Security: bandit](https://img.shields.io/badge/security-bandit-yellow.svg)](https://github.com/PyCQA/bandit)
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API Reference](#-api-reference) • [Contributing](#-contributing)
+
+</div>
+
+---
 
 ## 📋 Table of Contents
 
-- [Features](#-features)
+- [About](#-about)
+- [Key Features](#-key-features)
 - [Architecture](#-architecture)
 - [Prerequisites](#-prerequisites)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
 - [Usage](#-usage)
 - [API Endpoints](#-api-endpoints)
-- [Project Structure](#-project-structure)
-- [Testing](#-testing)
 - [Deployment](#-deployment)
+- [Security](#-security)
+- [Testing](#-testing)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
 - [License](#-license)
+- [Acknowledgments](#-acknowledgments)
 
-## ✨ Features
+---
 
-### Core Capabilities
-- **🤖 AI-Powered Health Analysis**: Advanced symptom checking and health query processing
-- **🌐 Multi-Language Support**: Supports Hindi, English, and regional languages
-- **⚡ Real-Time Response**: Instant medical information and guidance
-- **📊 Symptom Analysis**: Intelligent symptom evaluation and recommendations
-- **🏥 Emergency Detection**: Automatic detection and escalation of emergency situations
-- **📱 WhatsApp Integration**: Seamless integration with WhatsApp Business API
+## 🎯 About
 
-### Healthcare Features
-- **Symptom Checker**: Analyze symptoms and provide potential conditions
-- **Medicine Information**: Detailed information about medications and usage
-- **Emergency Guidance**: First-aid instructions and emergency protocols
-- **Hospital Locator**: Find nearby hospitals and healthcare facilities
-- **Health Tips**: Preventive care and wellness recommendations
-- **Vaccination Information**: Immunization schedules and vaccine details
+A sophisticated, production-ready WhatsApp chatbot that provides instant healthcare information, symptom analysis, and medical guidance in multiple languages. Built for **Smart India Hackathon 2025 (SIH-25049)** to improve healthcare accessibility in rural and semi-urban areas.
 
-### Technical Features
-- **🔐 Secure Data Handling**: HIPAA-compliant data storage and processing
-- **📈 Analytics Dashboard**: Track usage patterns and health trends
-- **🔄 Session Management**: Contextual conversation handling
-- **📝 Logging System**: Comprehensive logging for debugging and monitoring
-- **⚡ Caching**: Efficient response caching for improved performance
-- **🛡️ Rate Limiting**: Protection against spam and abuse
+### 🌟 Why This Project?
+
+- **Healthcare Gap**: 65% of rural India lacks easy access to healthcare information
+- **Language Barrier**: Multi-language support (Hindi, English, Tamil, Telugu, etc.)
+- **24/7 Availability**: Instant responses for health queries and emergencies
+- **Privacy First**: HIPAA-compliant data handling with no personal data logging
+
+---
+
+## ✨ Key Features
+
+### 🤖 AI-Powered Health Services
+- **Symptom Checker**: Intelligent analysis with ML-based recommendations
+- **Medicine Information**: Comprehensive drug database with usage guidelines
+- **Emergency Detection**: Automatic detection and escalation of critical situations
+- **Hospital Locator**: Find nearby healthcare facilities with real-time data
+
+### 💬 Communication Features
+- **Multi-Language Support**: 11+ Indian languages with automatic detection
+- **WhatsApp Integration**: Seamless WhatsApp Business API integration
+- **SMS Alerts**: Twilio-powered emergency notifications
+- **Broadcast System**: Admin alerts for health advisories and tips
+
+### 🔒 Security & Compliance
+- **Secure Authentication**: Header-based API keys with constant-time comparison
+- **No PII Logging**: Privacy-focused design with masked sensitive data
+- **Environment-based Config**: Zero hardcoded secrets
+- **Rate Limiting**: Protection against abuse and DoS attacks
+
+### 📊 Admin Dashboard
+- **Broadcast Alerts**: Send health tips and emergency notifications
+- **Analytics**: Track usage, engagement, and health trends
+- **User Management**: Monitor conversations and user interactions
+- **System Health**: Real-time monitoring and logging
+
+---
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │                 │     │                  │     │                 │
-│  WhatsApp User  │────▶│  WhatsApp Cloud  │────▶│  FastAPI Server │
-│                 │     │       API        │     │                 │
+│  WhatsApp User  │────▶│ WhatsApp Cloud   │────▶│  FastAPI Server │
+│                 │     │      API         │     │                 │
 └─────────────────┘     └──────────────────┘     └────────┬────────┘
                                                            │
-                                ┌──────────────────────────┼──────────────────────────┐
-                                │                          │                          │
-                        ┌───────▼────────┐     ┌──────────▼─────────┐     ┌──────────▼────────┐
-                        │                │     │                    │     │                   │
-                        │  ML Models     │     │  Database          │     │  External APIs    │
-                        │  - NLP         │     │  - SQLite/MySQL    │     │  - Hospital API   │
-                        │  - Symptom AI  │     │  - User Sessions   │     │  - Medicine DB    │
-                        │                │     │                    │     │                   │
-                        └────────────────┘     └────────────────────┘     └───────────────────┘
+                        ┌──────────────────────────────────┼──────────────────┐
+                        │                                  │                  │
+                ┌───────▼────────┐       ┌────────────────▼───────┐  ┌──────▼────────┐
+                │                │       │                        │  │               │
+                │   ML Models    │       │      Database          │  │ External APIs │
+                │   - NLP        │       │   - User Sessions      │  │ - Hospital DB │
+                │   - Symptom AI │       │   - Health Records     │  │ - Medicine DB │
+                │                │       │                        │  │               │
+                └────────────────┘       └────────────────────────┘  └───────────────┘
 ```
 
-## 📋 Prerequisites
+### Technology Stack
 
-- Python 3.8 or higher
-- WhatsApp Business Account
-- Meta Developer Account
-- Facebook App with WhatsApp Business API access
-- SSL Certificate (for production)
-- 4GB RAM minimum
-- 10GB storage space
+- **Backend**: FastAPI 0.104+, Python 3.8+
+- **Async HTTP**: httpx for non-blocking operations
+- **Database**: SQLite (dev) / PostgreSQL (prod)
+- **ML/NLP**: Custom symptom checker, language detection
+- **Messaging**: WhatsApp Business API, Twilio SMS
+- **Deployment**: Docker, Kubernetes, Cloud-ready
+
+---
+
+## 📦 Prerequisites
+
+- **Python**: 3.8 or higher
+- **WhatsApp Business Account**: [Meta Developer Account](https://developers.facebook.com/)
+- **Twilio Account** (optional): For SMS alerts
+- **SSL Certificate**: Required for production webhook
+
+### System Requirements
+- RAM: Minimum 4GB (8GB recommended)
+- Storage: 10GB free space
+- OS: Linux/Ubuntu (recommended), macOS, Windows
+
+---
 
 ## 🚀 Installation
 
-### 1. Clone the Repository
+### 1. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/healthcare-whatsapp-bot.git
-cd healthcare-whatsapp-bot
+git clone https://github.com/Hammadhkhan/Whatsapp-Healthcare-Backend.git
+cd Whatsapp-Healthcare-Backend
 ```
 
 ### 2. Create Virtual Environment
 
 ```bash
-# Windows
-python -m venv venv
-venv\Scripts\activate
-
 # Linux/Mac
 python3 -m venv venv
 source venv/bin/activate
+
+# Windows
+python -m venv venv
+venv\Scripts\activate
 ```
 
 ### 3. Install Dependencies
@@ -106,105 +149,83 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Download ML Models
+### 4. Generate Secure Keys
 
 ```bash
-python scripts/download_models.py
+# Generate SECRET_KEY (minimum 32 characters)
+python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(32))"
+
+# Generate ADMIN_API_KEY (minimum 32 characters)
+python -c "import secrets; print('ADMIN_API_KEY=' + secrets.token_urlsafe(32))"
 ```
+
+---
 
 ## ⚙️ Configuration
 
-### 1. Environment Variables
-
-Create a `.env` file in the root directory:
-
-```env
-# WhatsApp Configuration
-WHATSAPP_ACCESS_TOKEN=your_access_token_here
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
-WHATSAPP_VERIFY_TOKEN=your_verify_token
-WHATSAPP_BUSINESS_ACCOUNT_ID=your_business_account_id
-
-# Database Configuration
-DATABASE_URL=sqlite:///./healthcare.db
-# For PostgreSQL: postgresql://user:password@localhost/dbname
-
-# Security
-SECRET_KEY=your-secret-key-here
-ADMIN_PHONE_NUMBERS=911234567890,919876543210
-ENCRYPTION_KEY=your-encryption-key
-
-# API Keys (Optional)
-GOOGLE_MAPS_API_KEY=your_google_maps_key
-OPENAI_API_KEY=your_openai_key
-TRANSLATION_API_KEY=your_translation_key
-
-# App Settings
-DEBUG=True
-LOG_LEVEL=INFO
-MAX_CONVERSATION_HISTORY=20
-SESSION_TIMEOUT_MINUTES=30
-RATE_LIMIT_PER_MINUTE=30
-
-# ML Model Settings
-USE_GPU=False
-MODEL_CACHE_DIR=./models
-CONFIDENCE_THRESHOLD=0.7
-
-# External APIs
-HOSPITAL_API_URL=https://api.example.com/hospitals
-MEDICINE_DB_API_URL=https://api.example.com/medicines
-GOVERNMENT_HEALTH_API=https://api.data.gov.in/health
-```
-
-### 2. WhatsApp Setup
-
-#### Get WhatsApp Access Token:
-
-1. Go to [Meta for Developers](https://developers.facebook.com)
-2. Create or select your app
-3. Add WhatsApp product to your app
-4. Navigate to WhatsApp → API Setup
-5. Generate a permanent access token
-
-#### Configure Webhook:
-
-1. In your Meta app dashboard, go to WhatsApp → Configuration
-2. Set Webhook URL: `https://yourdomain.com/webhook`
-3. Set Verify Token: Same as `WHATSAPP_VERIFY_TOKEN` in `.env`
-4. Subscribe to webhook fields:
-   - `messages`
-   - `messaging_postbacks`
-   - `messaging_optins`
-   - `message_delivery`
-
-### 3. Database Setup
+### 1. Create `.env` File
 
 ```bash
-# Initialize database
-python scripts/init_db.py
-
-# Run migrations (if using Alembic)
-alembic upgrade head
+cp .env.example .env
 ```
 
-## 📱 Usage
+### 2. Configure Environment Variables
 
-### Starting the Server
+```env
+# WhatsApp Configuration (REQUIRED)
+WHATSAPP_TOKEN=your_whatsapp_access_token
+WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
+VERIFY_TOKEN=your_secure_verify_token_min_32_chars
+WHATSAPP_BUSINESS_ACCOUNT_ID=your_business_account_id
 
-#### Development Mode:
+# Security (REQUIRED - Use generated keys from above)
+SECRET_KEY=your-generated-secret-key-32-chars
+ADMIN_API_KEY=your-generated-admin-api-key-32-chars
+
+# Admin Configuration (Comma-separated with country code)
+ADMIN_PHONE_NUMBERS=911234567890,919876543210
+
+# Twilio Configuration (Optional - for SMS)
+TWILIO_ACCOUNT_SID=your_account_sid
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_SMS_NUMBER=your_twilio_number
+TWILIO_VERIFY_TOKEN=your_twilio_verify_token
+
+# Application Settings
+DEBUG=False
+LOG_LEVEL=INFO
+EMERGENCY_NUMBER=112  # Change based on region (911 for US)
+
+# Test Configuration (Development only)
+TEST_PHONE_NUMBER=919876543210
+```
+
+### 3. WhatsApp Business API Setup
+
+1. Create a Meta Developer account at [developers.facebook.com](https://developers.facebook.com/)
+2. Create a new app and add WhatsApp product
+3. Get your **Access Token** and **Phone Number ID** from the dashboard
+4. Configure webhook URL: `https://yourdomain.com/webhook`
+5. Set **Verify Token** (same as in `.env`)
+6. Subscribe to webhook fields: `messages`, `messaging_postbacks`
+
+---
+
+## 💻 Usage
+
+### Development Server
 
 ```bash
 uvicorn app.main:app --reload --port 5000 --host 0.0.0.0
 ```
 
-#### Production Mode:
+### Production Server
 
 ```bash
 gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:5000
 ```
 
-### Docker Deployment:
+### Docker
 
 ```bash
 # Build image
@@ -219,249 +240,169 @@ docker run -d \
   healthcare-bot
 ```
 
-### Testing the Bot
+### Verify Installation
 
-1. **Send a WhatsApp message** to your configured business number
-2. **Try these commands:**
-   - "Hi" - Get started
-   - "I have a headache" - Symptom analysis
-   - "Tell me about paracetamol" - Medicine information
-   - "Emergency" - Emergency assistance
-   - "Nearby hospitals" - Location-based services
+```bash
+curl http://localhost:5000/
+# Expected: {"status": "healthy", "message": "Healthcare WhatsApp Bot API"}
+```
 
-🚨 Alert System
-Emergency Detection & SMS Alerts
-The bot includes an advanced emergency detection system that automatically sends SMS alerts to administrators when critical situations are detected.
+---
 
-Testing Twilio Integration
+## 📡 API Endpoints
 
-# Test Twilio SMS functionality
-python send_twilio.py
-puython send_alert.py
-
-# Complete Alert System Script
-send_alert_fixed_complete.py:
-
-## 🔌 API Endpoints
-
-### Core Endpoints
+### Public Endpoints (No Auth)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Health check |
+| `/` | GET | API health check |
 | `/webhook` | GET | WhatsApp webhook verification |
 | `/webhook` | POST | Receive WhatsApp messages |
-| `/api/health` | GET | API health status |
-| `/api/stats` | GET | Bot statistics |
+| `/api/health` | GET | Service status |
+| `/admin/health` | GET | Admin service health |
 
-### Admin Endpoints
+### Protected Endpoints (Require `X-API-Key` Header)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/admin/dashboard` | GET | Admin dashboard |
-| `/admin/users` | GET | List all users |
-| `/admin/conversations` | GET | View conversations |
-| `/admin/analytics` | GET | Analytics data |
-| `/admin/broadcast` | POST | Send broadcast message |
+| `/admin/broadcast` | POST | Send broadcast alert |
+| `/admin/emergency` | POST | Send emergency alert |
+| `/admin/health-tip` | POST | Send health tip |
+| `/admin/stats` | GET | Get usage statistics |
 
-### API Documentation
+### Example API Call
 
-- Swagger UI: `http://localhost:5000/docs`
-- ReDoc: `http://localhost:5000/redoc`
-
-## 📁 Project Structure
-
+```bash
+# Send Broadcast Alert
+curl -X POST http://localhost:5000/admin/broadcast \
+  -H "X-API-Key: YOUR_ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "🚨 Health Alert: Dengue cases rising. Use mosquito repellent.",
+    "alert_type": "emergency",
+    "priority": "high"
+  }'
 ```
-healthcare-whatsapp-bot/
-│
-├── app/
-│   ├── __init__.py
-│   ├── main.py                 # FastAPI application
-│   ├── config.py               # Configuration settings
-│   │
-│   ├── api/
-│   │   ├── __init__.py
-│   │   ├── endpoints/
-│   │   │   ├── webhook.py     # WhatsApp webhook
-│   │   │   ├── health.py      # Health endpoints
-│   │   │   └── admin.py       # Admin endpoints
-│   │   └── middleware.py      # Custom middleware
-│   │
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── database.py        # Database connection
-│   │   ├── security.py        # Security utilities
-│   │   └── logging.py         # Logging configuration
-│   │
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── user.py           # User model
-│   │   ├── conversation.py   # Conversation model
-│   │   └── health_data.py    # Health data models
-│   │
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── whatsapp.py       # WhatsApp service
-│   │   ├── message_processor.py # Message processing
-│   │   ├── health_analyzer.py   # Health analysis
-│   │   └── emergency_handler.py # Emergency handling
-│   │
-│   ├── ml/
-│   │   ├── __init__.py
-│   │   ├── symptom_checker.py   # Symptom analysis
-│   │   ├── nlp_processor.py     # NLP processing
-│   │   └── models/              # ML model files
-│   │
-│   └── utils/
-│       ├── __init__.py
-│       ├── validators.py        # Input validation
-│       ├── formatters.py        # Response formatting
-│       └── helpers.py           # Helper functions
-│
-├── data/
-│   ├── symptoms.json            # Symptom database
-│   ├── medicines.json           # Medicine database
-│   ├── hospitals.json           # Hospital data
-│   └── responses.json           # Response templates
-│
-├── scripts/
-│   ├── init_db.py              # Database initialization
-│   ├── download_models.py      # Model downloader
-│   └── test_webhook.py         # Webhook tester
-│
-├── tests/
-│   ├── __init__.py
-│   ├── test_api.py            # API tests
-│   ├── test_ml.py             # ML model tests
-│   └── test_services.py       # Service tests
-│
-├── docs/
-│   ├── API.md                 # API documentation
-│   ├── DEPLOYMENT.md          # Deployment guide
-│   └── TROUBLESHOOTING.md     # Troubleshooting guide
-│
-├── .env.example               # Environment variables example
-├── .gitignore                # Git ignore file
-├── requirements.txt          # Python dependencies
-├── Dockerfile               # Docker configuration
-├── docker-compose.yml       # Docker Compose file
-└── README.md               # This file
+
+### Interactive API Documentation
+
+- **Swagger UI**: `http://localhost:5000/docs`
+- **ReDoc**: `http://localhost:5000/redoc`
+
+---
+
+## 🚢 Deployment
+
+### Deploy to Heroku
+
+```bash
+heroku create healthcare-whatsapp-bot
+heroku config:set WHATSAPP_TOKEN=your_token
+heroku config:set ADMIN_API_KEY=your_key
+git push heroku main
 ```
+
+### Deploy to AWS EC2
+
+```bash
+# SSH into EC2 instance
+ssh -i your-key.pem ubuntu@your-ec2-ip
+
+# Install dependencies
+sudo apt update && sudo apt install -y python3-pip nginx supervisor
+
+# Clone and setup
+git clone https://github.com/Hammadhkhan/Whatsapp-Healthcare-Backend.git
+cd Whatsapp-Healthcare-Backend
+pip3 install -r requirements.txt
+
+# Configure Nginx and Supervisor
+sudo cp deployment/nginx.conf /etc/nginx/sites-available/healthcare-bot
+sudo cp deployment/supervisor.conf /etc/supervisor/conf.d/healthcare-bot.conf
+sudo systemctl restart nginx supervisor
+```
+
+### Deploy with Docker Compose
+
+```bash
+docker-compose up -d
+```
+
+---
+
+## 🔐 Security
+
+### Security Best Practices Implemented
+
+✅ **No Hardcoded Secrets**: All credentials in environment variables  
+✅ **Constant-Time Comparison**: Prevents timing attacks on API keys  
+✅ **Header-Based Auth**: API keys in `X-API-Key` header (not query params)  
+✅ **PII Protection**: No logging of phone numbers or message content  
+✅ **Rate Limiting**: 30 requests/minute default (configurable)  
+✅ **Input Validation**: Pydantic models for all inputs  
+✅ **HTTPS Required**: Production webhook must use SSL  
+
+### Security Checklist
+
+- [ ] Generate strong random keys (32+ characters)
+- [ ] Set `DEBUG=False` in production
+- [ ] Use HTTPS for webhook URL
+- [ ] Rotate API keys every 90 days
+- [ ] Enable rate limiting
+- [ ] Monitor logs for suspicious activity
+- [ ] Regular security audits
+
+---
 
 ## 🧪 Testing
 
 ### Run Tests
 
 ```bash
+# Install test dependencies
+pip install pytest pytest-cov pytest-asyncio
+
 # Run all tests
 pytest
 
 # Run with coverage
 pytest --cov=app tests/
 
-# Run specific test file
-pytest tests/test_api.py
-
-# Run with verbose output
-pytest -v
+# Run specific test
+pytest tests/test_api.py -v
 ```
 
-## 🚀 Deployment
-
-### Using Docker
+### Test WhatsApp Webhook
 
 ```bash
-# Build and run with docker-compose
-docker-compose up -d
+# Test webhook verification
+curl "http://localhost:5000/webhook?hub.mode=subscribe&hub.verify_token=YOUR_VERIFY_TOKEN&hub.challenge=test123"
 
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
+# Expected: test123
 ```
 
-### Using Kubernetes
+### Test Admin Endpoints
 
-```yaml
-# kubernetes/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: healthcare-bot
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: healthcare-bot
-  template:
-    metadata:
-      labels:
-        app: healthcare-bot
-    spec:
-      containers:
-      - name: healthcare-bot
-        image: healthcare-bot:latest
-        ports:
-        - containerPort: 5000
-        envFrom:
-        - secretRef:
-            name: healthcare-bot-secrets
-```
-
-### Cloud Deployment Options
-
-#### AWS EC2
 ```bash
-# Install dependencies
-sudo apt update
-sudo apt install python3-pip nginx supervisor
-
-# Clone and setup
-git clone <repo>
-cd healthcare-whatsapp-bot
-pip3 install -r requirements.txt
-
-# Configure nginx and supervisor
-sudo cp deployment/nginx.conf /etc/nginx/sites-available/healthcare-bot
-sudo cp deployment/supervisor.conf /etc/supervisor/conf.d/healthcare-bot.conf
+python send_alert.py
 ```
 
-#### Heroku
-```bash
-# Create Heroku app
-heroku create healthcare-whatsapp-bot
+---
 
-# Set environment variables
-heroku config:set WHATSAPP_ACCESS_TOKEN=your_token
-
-# Deploy
-git push heroku main
-```
-
-#### Google Cloud Run
-```bash
-# Build and push image
-gcloud builds submit --tag gcr.io/PROJECT_ID/healthcare-bot
-
-# Deploy
-gcloud run deploy --image gcr.io/PROJECT_ID/healthcare-bot --platform managed
-```
-
-## 🔧 Troubleshooting
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-#### 1. Token Expired Error
+#### 1. Webhook Verification Failed
+```
+Error: Verification failed
+Solution: Ensure VERIFY_TOKEN in .env matches Meta dashboard
+```
+
+#### 2. Token Expired
 ```
 Error: Session has expired
 Solution: Generate new access token from Meta Developer Dashboard
-```
-
-#### 2. Webhook Verification Failed
-```
-Error: Webhook verification failed
-Solution: Check WHATSAPP_VERIFY_TOKEN matches dashboard configuration
 ```
 
 #### 3. Database Connection Error
@@ -470,54 +411,118 @@ Error: Cannot connect to database
 Solution: Check DATABASE_URL and ensure database server is running
 ```
 
-#### 4. Model Loading Error
+#### 4. Import Error
 ```
-Error: Model not found
-Solution: Run python scripts/download_models.py
+Error: No module named 'app'
+Solution: Ensure you're in project root and virtual environment is activated
 ```
 
 ### Debug Mode
 
 Enable detailed logging:
-```python
-# In .env
+```env
 DEBUG=True
 LOG_LEVEL=DEBUG
 ```
 
-### Health Check
+### Logs Location
 
-```bash
-curl http://localhost:5000/api/health
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-
-## 🙏 Acknowledgments
-
-- Meta for WhatsApp Business API
-- FastAPI team for the excellent framework
-- Open-source ML community
-- Healthcare data providers
-
-
-## 🔄 Version History
-
-- **v1.0.0** (2024-01-15): Initial release
-- **v1.1.0** (2024-02-01): Added multi-language support
-- **v1.2.0** (2024-03-01): Enhanced symptom checker
-- **v1.3.0** (2024-04-01): Added emergency detection
+- Application logs: `logs/app.log`
+- Error logs: Console output with `DEBUG=True`
 
 ---
 
-**Made with ❤️ for better healthcare accessibility**
+## 🤝 Contributing
 
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+### Quick Contribution Guide
+
+1. **Fork** the repository
+2. **Create** your feature branch (`git checkout -b feature/AmazingFeature`)
+3. **Commit** changes (`git commit -m 'Add AmazingFeature'`)
+4. **Push** to branch (`git push origin feature/AmazingFeature`)
+5. **Open** a Pull Request
+
+### Development Setup
+
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Install pre-commit hooks
+pre-commit install
+
+# Run linting
+black app/ tests/
+flake8 app/ tests/
+
+# Run security checks
+bandit -r app/
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Smart India Hackathon 2025** for problem statement SIH-25049
+- **Meta** for WhatsApp Business API
+- **FastAPI** team for the excellent framework
+- **Contributors** who helped improve this project
+
+### Built With
+
+- [FastAPI](https://fastapi.tiangolo.com/) - Modern web framework
+- [httpx](https://www.python-httpx.org/) - Async HTTP client
+- [Twilio](https://www.twilio.com/) - SMS notifications
+- [WhatsApp Business API](https://developers.facebook.com/docs/whatsapp) - Messaging platform
+
+---
+
+## 📞 Contact & Support
+
+- **Project Maintainer**: Hammad Khan
+- **GitHub**: [@Hammadhkhan](https://github.com/Hammadhkhan)
+- **Issues**: [GitHub Issues](https://github.com/Hammadhkhan/Whatsapp-Healthcare-Backend/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Hammadhkhan/Whatsapp-Healthcare-Backend/discussions)
+
+---
+
+## 📊 Project Status
+
+- **Version**: 1.0.0
+- **Status**: ✅ Production Ready
+- **Last Updated**: November 2025
+- **Maintenance**: Actively Maintained
+
+---
+
+## 🗺️ Roadmap
+
+- [x] WhatsApp Business API integration
+- [x] Multi-language support (11+ languages)
+- [x] Symptom checker with ML
+- [x] Emergency detection and alerts
+- [x] Admin broadcast system
+- [ ] Voice message support
+- [ ] Image-based diagnosis (future)
+- [ ] Integration with government health APIs
+- [ ] Mobile app companion
+
+---
+
+<div align="center">
+
+### ⭐ Star this repo if you find it helpful!
+
+Made with ❤️ for better healthcare accessibility
+
+**[Back to Top](#-healthcare-whatsapp-chatbot)**
+
+</div>
